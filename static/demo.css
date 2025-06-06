@@ -1,0 +1,55 @@
+/*
+    SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+    SPDX-License-Identifier: MIT
+*/
+textarea {
+    width: 500px;
+    min-height: 75px;
+}
+
+/* body {
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    height: 100vh;
+    justify-content: center;
+    align-items: center;
+  } */
+
+  .container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 40px; /* Space between the two divs */
+    padding: 20px;
+  }
+
+  .joystick {
+    display: grid;
+    grid-template-columns: 80px 80px 80px;
+    grid-template-rows: 80px 80px 80px;
+    gap: 10px;
+  }
+
+  .button {
+    background: #2353bb;
+    border: 2px solid #888;
+    border-radius: 10px;
+    font-size: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .button:hover {
+    background: #555;
+  }
+
+  .empty {
+    pointer-events: none;
+    background: transparent;
+    border: none;
+  }
