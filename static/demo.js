@@ -6,6 +6,11 @@
 const log = msg => {
     document.getElementById('logs').innerHTML += msg + '<br>'
   }
+
+  control_signal = {
+    signal: String,
+    value: String
+  }
   
   window.createSession = isPublisher => {
     const pc = new RTCPeerConnection({
@@ -49,7 +54,7 @@ const log = msg => {
     sendChannel.send(JSON.stringify({ frameId, timestamp }));
     frameId++;
   }, 1000); // Simulate 100fps video stream
-
+// NOTE - click signals - controls send logic. 
   // Setup listeners only once the channel is open
   document.querySelectorAll('.button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -59,6 +64,36 @@ const log = msg => {
       }
     });
   });
+
+  // NOTE - key press signals
+    let value = 0;
+    let interval = null;
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowUp" && interval === null) {
+        value = 6; // Start accelerating from 6
+        control_signal.signal = "Vehicle.Speed";
+        control_signal.value = value;
+        sendChannel.send(JSON.stringify(control_signal));
+        console.log(`Accelerate signal sent with value: ${value}`); 
+        interval = setInterval(() => {
+          value++;
+          control_signal.signal = "Vehicle.Speed";
+          control_signal.value = value;
+          sendChannel.send(JSON.stringify(control_signal));
+          console.log(`Accelerate signal sent with value: ${value}`); 
+        }, 50); // Increase every 100 ms
+      }
+    });
+
+    // Reset value on keyup
+    document.addEventListener("keyup", (event) => {
+      if (event.key === "ArrowUp") {
+        clearInterval(interval);
+        interval = null;
+      }
+    });
+
 };
 sendChannel.onmessage = e => log(`Message from DataChannel '${sendChannel.label}' payload '${String(e.data)}'`)
   

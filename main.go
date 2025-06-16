@@ -146,7 +146,9 @@ func init() {
 func main() {
 	port_s1 := flag.Int("port_s1", 8082, "http server port")
 	port_s2 := flag.Int("port_s2", 8083, "http server port")
+	testing := flag.Bool("testing", false, "testing mode")
 	flag.Parse()
+	// Create a channel to receive SDP offers
 
 	ch := make(chan string)
 
@@ -182,6 +184,7 @@ func main() {
 	interceptorRegistry := &interceptor.Registry{}
 
 	messageChannel := make(chan []byte)
+	control_signal_channel := make(chan []byte)
 	// Use the default set of Interceptors
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptorRegistry); err != nil {
 		panic(err)
@@ -333,7 +336,11 @@ func main() {
 
 	go func() {
 		for {
-			sendChannel.Send(<-messageChannel)
+			if testing != nil && *testing {
+				sendChannel.Send(<-messageChannel)
+			} else {
+				sendChannel.Send(<-control_signal_channel)
+			}
 
 		}
 	}()
@@ -445,78 +452,86 @@ func main() {
 
 			// Register channel opening handling
 			dataChannel.OnOpen(func() {
-				NewHybridClock := fastclock.NewHybridClock()
-				_ = NewHybridClock
-				var lastMessageTime atomic.Value
-				lastMessageTime.Store(time.Now())
-				fmt.Printf(
-					"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
-					dataChannel.Label(), dataChannel.ID(),
-				)
 
-				fmt.Println("sendChannel has opened")
-				frameID := 0
+				if testing != nil && *testing {
+					fmt.Println("Testing mode enabled, sending random messages")
+					NewHybridClock := fastclock.NewHybridClock()
+					_ = NewHybridClock
+					var lastMessageTime atomic.Value
+					lastMessageTime.Store(time.Now())
+					fmt.Printf(
+						"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+						dataChannel.Label(), dataChannel.ID(),
+					)
 
-				ticker := time.NewTicker(100 * time.Millisecond)
+					fmt.Println("sendChannel has opened")
+					frameID := 0
 
-				go func() {
-					for range ticker.C {
-						// response, error := ntp.Query("0.beevik-ntp.pool.ntp.org")
-						// if error != nil {
-						// 	fmt.Println("Error querying NTP server:", error)
-						// 	continue
-						// }
+					ticker := time.NewTicker(100 * time.Millisecond)
 
-						// time_now := time.Now()
-						// messageSentTime := time_now.Add(response.ClockOffset).UnixMilli()
-						// messageSentTime := time.Now().UnixMilli()
-						messageSentTimePrev := lastMessageTime.Load().(time.Time).UnixMilli()
-						messageSentTime := time.Now().UnixMilli()
-						sent_rate := float64(messageSentTime - messageSentTimePrev) // in milliseconds
-						webrtcStats.MessageSendRate.WithLabelValues("MessageSendRate").Set(sent_rate)
-						// Update the last message time
-						lastMessageTime.Store(time.Now())
-						// fmt.Printf("%s, %s, %s \n", strconv.FormatInt(messageSentTime, 10), response.ClockOffset, response.Time) // Equivalent to JS Date.now()
-						payloadBytes := make([]byte, 120000) // 120000 bytes = 120 KB payload
-						_, err := rand.Read(payloadBytes)
-						if err != nil {
-							fmt.Println("Error generating random payload:", err)
-							continue
+					go func() {
+						for range ticker.C {
+							// response, error := ntp.Query("0.beevik-ntp.pool.ntp.org")
+							// if error != nil {
+							// 	fmt.Println("Error querying NTP server:", error)
+							// 	continue
+							// }
+
+							// time_now := time.Now()
+							// messageSentTime := time_now.Add(response.ClockOffset).UnixMilli()
+							// messageSentTime := time.Now().UnixMilli()
+							messageSentTimePrev := lastMessageTime.Load().(time.Time).UnixMilli()
+							messageSentTime := time.Now().UnixMilli()
+							sent_rate := float64(messageSentTime - messageSentTimePrev) // in milliseconds
+							webrtcStats.MessageSendRate.WithLabelValues("MessageSendRate").Set(sent_rate)
+							// Update the last message time
+							lastMessageTime.Store(time.Now())
+							// fmt.Printf("%s, %s, %s \n", strconv.FormatInt(messageSentTime, 10), response.ClockOffset, response.Time) // Equivalent to JS Date.now()
+							payloadBytes := make([]byte, 120000) // 120000 bytes = 120 KB payload
+							_, err := rand.Read(payloadBytes)
+							if err != nil {
+								fmt.Println("Error generating random payload:", err)
+								continue
+							}
+
+							// Encode to base64 to make it JSON-safe (you can also use hex if needed)
+							payload := base64.StdEncoding.EncodeToString(payloadBytes)
+
+							message := DataChannelMessage{
+								FrameID:                int64(frameID),
+								MessageSentTimeClient2: messageSentTime,
+								MessageSendRate:        int64(sent_rate),
+								Payload:                []byte(payload),
+							}
+
+							fmt.Printf("Sending message with FrameID: %d, MessageSentTimeClient2: %d\n", message.FrameID, message.MessageSentTimeClient2)
+
+							data, err := json.Marshal(message)
+							if err != nil {
+								fmt.Println("Error marshaling message:", err)
+								continue
+							}
+
+							messageChannel <- data
+							// err = dataChannel.Send(data)
+							// if err != nil {
+							// 	fmt.Println("Error sending message:", err)
+							// }
+
+							frameID++
 						}
+					}()
+					return
 
-						// Encode to base64 to make it JSON-safe (you can also use hex if needed)
-						payload := base64.StdEncoding.EncodeToString(payloadBytes)
+				}
 
-						message := DataChannelMessage{
-							FrameID:                int64(frameID),
-							MessageSentTimeClient2: messageSentTime,
-							MessageSendRate:        int64(sent_rate),
-							Payload:                []byte(payload),
-						}
-
-						fmt.Printf("Sending message with FrameID: %d, MessageSentTimeClient2: %d\n", message.FrameID, message.MessageSentTimeClient2)
-
-						data, err := json.Marshal(message)
-						if err != nil {
-							fmt.Println("Error marshaling message:", err)
-							continue
-						}
-
-						messageChannel <- data
-						// err = dataChannel.Send(data)
-						// if err != nil {
-						// 	fmt.Println("Error sending message:", err)
-						// }
-
-						frameID++
-					}
-				}()
 			})
 
 			// Register text message handling
 			dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 				// fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
 				// messageChannel <- msg.Data
+				control_signal_channel <- msg.Data
 			})
 		})
 
